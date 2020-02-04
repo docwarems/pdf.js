@@ -193,6 +193,11 @@ const defaultOptions = {
     value: "",
     kind: OptionKind.API,
   },
+  disableOriginCheck : {
+    /** @type {boolean} */
+    value: false,
+    kind: OptionKind.API,
+  },
   isEvalSupported: {
     /** @type {boolean} */
     value: true,

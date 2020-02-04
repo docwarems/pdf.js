@@ -316,6 +316,7 @@ class LinkAnnotationElement extends AnnotationElement {
           : linkService.externalLinkTarget,
         rel: linkService.externalLinkRel,
         enabled: linkService.externalLinkEnabled,
+        isEtkLink : data.isEtkLink,
       });
     } else if (data.action) {
       this._bindNamedAction(link, data.action);
@@ -510,13 +511,13 @@ class TextWidgetAnnotationElement extends WidgetAnnotationElement {
       return;
     }
 
-    let bold = "normal";
-    if (font.black) {
-      bold = "900";
-    } else if (font.bold) {
-      bold = "bold";
-    }
-    style.fontWeight = bold;
+    style.fontWeight = font.black
+      ? font.bold
+        ? "900"
+        : "bold"
+      : font.bold
+      ? "bold"
+      : "normal";
     style.fontStyle = font.italic ? "italic" : "normal";
 
     // Use a reasonable default font if the font doesn't specify a fallback.
@@ -1417,26 +1418,10 @@ class AnnotationLayer {
    * @memberof AnnotationLayer
    */
   static render(parameters) {
-    const sortedAnnotations = [],
-      popupAnnotations = [];
-    // Ensure that Popup annotations are handled last, since they're dependant
-    // upon the parent annotation having already been rendered (please refer to
-    // the `PopupAnnotationElement.render` method); fixes issue 11362.
     for (const data of parameters.annotations) {
       if (!data) {
         continue;
       }
-      if (data.annotationType === AnnotationType.POPUP) {
-        popupAnnotations.push(data);
-        continue;
-      }
-      sortedAnnotations.push(data);
-    }
-    if (popupAnnotations.length) {
-      sortedAnnotations.push(...popupAnnotations);
-    }
-
-    for (const data of sortedAnnotations) {
       const element = AnnotationElementFactory.create({
         data,
         layer: parameters.div,

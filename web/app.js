@@ -38,6 +38,7 @@ import {
 import { AppOptions, OptionKind } from "./app_options.js";
 import {
   build,
+  createObjectURL,
   getDocument,
   getFilenameFromUrl,
   GlobalWorkerOptions,
@@ -83,48 +84,29 @@ const ViewOnLoad = {
   INITIAL: 1,
 };
 
-class DefaultExternalServices {
-  constructor() {
-    throw new Error("Cannot initialize DefaultExternalServices.");
-  }
-
-  static updateFindControlState(data) {}
-
-  static updateFindMatchesCount(data) {}
-
-  static initPassiveLoading(callbacks) {}
-
-  static fallback(data, callback) {}
-
-  static reportTelemetry(data) {}
-
-  static createDownloadManager(options) {
+const DefaultExternalServices = {
+  updateFindControlState(data) {},
+  updateFindMatchesCount(data) {},
+  initPassiveLoading(callbacks) {},
+  fallback(data, callback) {},
+  reportTelemetry(data) {},
+  createDownloadManager(options) {
     throw new Error("Not implemented: createDownloadManager");
-  }
-
-  static createPreferences() {
+  },
+  createPreferences() {
     throw new Error("Not implemented: createPreferences");
-  }
-
-  static createL10n(options) {
+  },
+  createL10n(options) {
     throw new Error("Not implemented: createL10n");
-  }
-
-  static get supportsIntegratedFind() {
-    return shadow(this, "supportsIntegratedFind", false);
-  }
-
-  static get supportsDocumentFonts() {
-    return shadow(this, "supportsDocumentFonts", true);
-  }
-
-  static get supportedMouseWheelZoomModifierKeys() {
-    return shadow(this, "supportedMouseWheelZoomModifierKeys", {
-      ctrlKey: true,
-      metaKey: true,
-    });
-  }
-}
+  },
+  supportsIntegratedFind: false,
+  supportsDocumentFonts: true,
+  supportsDocumentColors: true,
+  supportedMouseWheelZoomModifierKeys: {
+    ctrlKey: true,
+    metaKey: true,
+  },
+};
 
 const PDFViewerApplication = {
   initialBookmark: document.location.hash.substring(1),
@@ -193,6 +175,7 @@ const PDFViewerApplication = {
     await this._initializeL10n();
 
     if (
+      // TODO
       this.isViewerEmbedded &&
       AppOptions.get("externalLinkTarget") === LinkTarget.NONE
     ) {
@@ -238,7 +221,6 @@ const PDFViewerApplication = {
   },
 
   /**
-   * Potentially parse special debugging flags in the hash section of the URL.
    * @private
    */
   async _parseHashParameters() {
@@ -249,12 +231,11 @@ const PDFViewerApplication = {
     ) {
       return undefined;
     }
+    const waitOn = [];
+
+    // Special debugging flags in the hash section of the URL.
     const hash = document.location.hash.substring(1);
-    if (!hash) {
-      return undefined;
-    }
-    const hashParams = parseQueryString(hash),
-      waitOn = [];
+    const hashParams = parseQueryString(hash);
 
     if (
       "disableworker" in hashParams &&
@@ -285,6 +266,9 @@ const PDFViewerApplication = {
     }
     if ("webgl" in hashParams) {
       AppOptions.set("enableWebGL", hashParams["webgl"] === "true");
+    }
+    if ("useonlycsszoom" in hashParams) {
+      AppOptions.set("useOnlyCssZoom", hashParams["useonlycsszoom"] === "true");
     }
     if ("verbosity" in hashParams) {
       AppOptions.set("verbosity", hashParams["verbosity"] | 0);
@@ -564,6 +548,10 @@ const PDFViewerApplication = {
     return this.externalServices.supportsDocumentFonts;
   },
 
+  get supportsDocumentColors() {
+    return this.externalServices.supportsDocumentColors;
+  },
+
   get loadingBar() {
     const bar = new ProgressBar("#loadingBar");
     return shadow(this, "loadingBar", bar);
@@ -576,7 +564,7 @@ const PDFViewerApplication = {
   initPassiveLoading() {
     if (
       typeof PDFJSDev === "undefined" ||
-      !PDFJSDev.test("MOZCENTRAL || CHROME")
+      !PDFJSDev.test("FIREFOX || MOZCENTRAL || CHROME")
     ) {
       throw new Error("Not implemented: initPassiveLoading");
     }
@@ -729,7 +717,10 @@ const PDFViewerApplication = {
       if (key === "docBaseUrl" && !value) {
         if (typeof PDFJSDev === "undefined" || !PDFJSDev.test("PRODUCTION")) {
           value = document.URL.split("#")[0];
-        } else if (PDFJSDev.test("MOZCENTRAL || CHROME")) {
+        } else if (
+          typeof PDFJSDev !== "undefined" &&
+          PDFJSDev.test("FIREFOX || MOZCENTRAL || CHROME")
+        ) {
           value = this.baseUrl;
         }
       }
@@ -845,8 +836,8 @@ const PDFViewerApplication = {
 
   fallback(featureId) {
     if (
-      typeof PDFJSDev === "undefined" ||
-      PDFJSDev.test("MOZCENTRAL || GENERIC")
+      typeof PDFJSDev !== "undefined" &&
+      PDFJSDev.test("FIREFOX || MOZCENTRAL")
     ) {
       // Only trigger the fallback once so we don't spam the user with messages
       // for one PDF.
@@ -922,7 +913,10 @@ const PDFViewerApplication = {
       }
     }
 
-    if (typeof PDFJSDev === "undefined" || !PDFJSDev.test("MOZCENTRAL")) {
+    if (
+      typeof PDFJSDev === "undefined" ||
+      !PDFJSDev.test("FIREFOX || MOZCENTRAL")
+    ) {
       const errorWrapperConfig = this.appConfig.errorWrapper;
       const errorWrapper = errorWrapperConfig.container;
       errorWrapper.removeAttribute("hidden");
@@ -1037,7 +1031,7 @@ const PDFViewerApplication = {
     let baseDocumentUrl;
     if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
       baseDocumentUrl = null;
-    } else if (PDFJSDev.test("MOZCENTRAL")) {
+    } else if (PDFJSDev.test("FIREFOX || MOZCENTRAL")) {
       baseDocumentUrl = this.baseUrl;
     } else if (PDFJSDev.test("CHROME")) {
       baseDocumentUrl = location.href.split("#")[0];
@@ -1317,8 +1311,8 @@ const PDFViewerApplication = {
         }
 
         if (
-          typeof PDFJSDev === "undefined" ||
-          PDFJSDev.test("MOZCENTRAL || GENERIC")
+          typeof PDFJSDev !== "undefined" &&
+          PDFJSDev.test("FIREFOX || MOZCENTRAL")
         ) {
           // Telemetry labels must be C++ variable friendly.
           let versionId = "other";
@@ -1548,8 +1542,8 @@ const PDFViewerApplication = {
     printService.layout();
 
     if (
-      typeof PDFJSDev === "undefined" ||
-      PDFJSDev.test("MOZCENTRAL || GENERIC")
+      typeof PDFJSDev !== "undefined" &&
+      PDFJSDev.test("FIREFOX || MOZCENTRAL")
     ) {
       this.externalServices.reportTelemetry({
         type: "print",
@@ -1593,6 +1587,7 @@ const PDFViewerApplication = {
     eventBus.on("beforeprint", _boundEvents.beforePrint);
     eventBus.on("afterprint", _boundEvents.afterPrint);
     eventBus.on("pagerendered", webViewerPageRendered);
+    eventBus.on("textlayerrendered", webViewerTextLayerRendered);
     eventBus.on("updateviewarea", webViewerUpdateViewarea);
     eventBus.on("pagechanging", webViewerPageChanging);
     eventBus.on("scalechanging", webViewerScaleChanging);
@@ -1667,6 +1662,7 @@ const PDFViewerApplication = {
     eventBus.off("beforeprint", _boundEvents.beforePrint);
     eventBus.off("afterprint", _boundEvents.afterPrint);
     eventBus.off("pagerendered", webViewerPageRendered);
+    eventBus.off("textlayerrendered", webViewerTextLayerRendered);
     eventBus.off("updateviewarea", webViewerUpdateViewarea);
     eventBus.off("pagechanging", webViewerPageChanging);
     eventBus.off("scalechanging", webViewerScaleChanging);
@@ -1743,6 +1739,10 @@ if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
         // Hosted or local viewer, allow for any file locations
         return;
       }
+      if (AppOptions.get("disableOriginCheck")) {
+        // Origin check explicitely disabled via app configuration
+        return;
+      }
       const { origin, protocol } = new URL(file, window.location.href);
       // Removing of the following line will not guarantee that the viewer will
       // start accepting URLs from foreign origin -- CORS headers on the remote
@@ -1783,7 +1783,13 @@ function loadAndEnablePDFBug(enabledTabs) {
   const appConfig = PDFViewerApplication.appConfig;
   return loadScript(appConfig.debuggerScriptPath).then(function() {
     PDFBug.enable(enabledTabs);
-    PDFBug.init({ OPS }, appConfig.mainContainer);
+    PDFBug.init(
+      {
+        OPS,
+        createObjectURL,
+      },
+      appConfig.mainContainer
+    );
   });
 }
 
@@ -1795,7 +1801,12 @@ function webViewerInitialized() {
     const params = parseQueryString(queryString);
     file = "file" in params ? params.file : AppOptions.get("defaultUrl");
     validateFileURL(file);
-  } else if (PDFJSDev.test("MOZCENTRAL")) {
+    let relativeFilePath = file.substring(0, file.lastIndexOf("/") + 1);
+    relativeFilePath = relativeFilePath.substring("../../../../".length);
+    let docBaseUrl = AppOptions.get("docBaseUrl");
+    docBaseUrl = docBaseUrl + relativeFilePath;
+    AppOptions.set("docBaseUrl", docBaseUrl)
+  } else if (PDFJSDev.test("FIREFOX || MOZCENTRAL")) {
     file = window.location.href.split("#")[0];
   } else if (PDFJSDev.test("CHROME")) {
     file = AppOptions.get("defaultUrl");
@@ -1856,8 +1867,8 @@ function webViewerInitialized() {
   }
 
   if (
-    (typeof PDFJSDev === "undefined" ||
-      PDFJSDev.test("MOZCENTRAL || GENERIC")) &&
+    typeof PDFJSDev !== "undefined" &&
+    PDFJSDev.test("FIREFOX || MOZCENTRAL") &&
     !PDFViewerApplication.supportsDocumentFonts
   ) {
     AppOptions.set("disableFontFace", true);
@@ -1929,7 +1940,7 @@ if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
       PDFViewerApplication.open(file);
     }
   };
-} else if (PDFJSDev.test("MOZCENTRAL || CHROME")) {
+} else if (PDFJSDev.test("FIREFOX || MOZCENTRAL || CHROME")) {
   webViewerOpenFileViaURL = function webViewerOpenFileViaURL(file) {
     PDFViewerApplication.setTitleUsingUrl(file);
     PDFViewerApplication.initPassiveLoading();
@@ -1984,8 +1995,8 @@ function webViewerPageRendered(evt) {
   }
 
   if (
-    typeof PDFJSDev === "undefined" ||
-    PDFJSDev.test("MOZCENTRAL || GENERIC")
+    typeof PDFJSDev !== "undefined" &&
+    PDFJSDev.test("FIREFOX || MOZCENTRAL")
   ) {
     PDFViewerApplication.externalServices.reportTelemetry({
       type: "pageInfo",
@@ -1998,6 +2009,28 @@ function webViewerPageRendered(evt) {
         stats,
       });
     });
+  }
+}
+
+function webViewerTextLayerRendered(evt) {
+  if (
+    typeof PDFJSDev !== "undefined" &&
+    PDFJSDev.test("FIREFOX || MOZCENTRAL") &&
+    evt.numTextDivs > 0 &&
+    !PDFViewerApplication.supportsDocumentColors
+  ) {
+    PDFViewerApplication.l10n
+      .get(
+        "document_colors_not_allowed",
+        null,
+        "PDF documents are not allowed to use their own colors: " +
+          "'Allow pages to choose their own colors' " +
+          "is deactivated in the browser."
+      )
+      .then(msg => {
+        console.error(msg);
+      });
+    PDFViewerApplication.fallback();
   }
 }
 
@@ -2507,7 +2540,10 @@ function webViewerKeyDown(evt) {
     }
   }
 
-  if (typeof PDFJSDev === "undefined" || !PDFJSDev.test("MOZCENTRAL")) {
+  if (
+    typeof PDFJSDev === "undefined" ||
+    !PDFJSDev.test("FIREFOX || MOZCENTRAL")
+  ) {
     // CTRL or META without shift
     if (cmd === 1 || cmd === 8) {
       switch (evt.keyCode) {

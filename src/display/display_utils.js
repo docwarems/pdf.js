@@ -383,11 +383,32 @@ const LinkTarget = {
  * @param {HTMLLinkElement} link - The link element.
  * @param {ExternalLinkParameters} params
  */
-function addLinkAttributes(link, { url, target, rel, enabled = true } = {}) {
+function addLinkAttributes(link, { url, target, rel, enabled = true , isEtkLink = false} = {}) {
   assert(
     url && typeof url === "string",
     'addLinkAttributes: A valid "url" parameter must provided.'
   );
+
+  if (isEtkLink) { // TODO extra flag? muss gelten für file-und etklink verlinkung
+    if (enabled) {
+      link.title = urlNullRemoved;
+      link.href = '#';
+      link.onclick = () => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", url);
+        xhr.responseType = "text";
+        xhr.send();
+      }
+    } else {
+      link.href = "";
+      link.title = `Disabled: ${urlNullRemoved}`;
+      link.onclick = () => {
+        return false;
+      };
+    }
+    return;
+  }
+
 
   const urlNullRemoved = removeNullCharacters(url);
   if (enabled) {
@@ -461,8 +482,8 @@ class StatTimer {
 
   toString() {
     // Find the longest name for padding purposes.
-    const outBuf = [];
-    let longest = 0;
+    let outBuf = [],
+      longest = 0;
     for (const time of this.times) {
       const name = time.name;
       if (name.length > longest) {

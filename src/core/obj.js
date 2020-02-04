@@ -267,7 +267,7 @@ class Catalog {
       dests = Object.create(null);
     if (obj instanceof NameTree) {
       const names = obj.getAll();
-      for (const name in names) {
+      for (let name in names) {
         dests[name] = fetchDestination(names[name]);
       }
     } else if (obj instanceof Dict) {
@@ -964,7 +964,7 @@ class Catalog {
       warn("parseDestDictionary: `resultObj` must be an object.");
       return;
     }
-    const docBaseUrl = params.docBaseUrl || null;
+    let docBaseUrl = params.docBaseUrl || null;
 
     let action = destDict.get("A"),
       url,
@@ -1078,6 +1078,10 @@ class Catalog {
                 resultObj.newWindow = true;
               }
               break;
+            } else if (js.indexOf("/etklink?") > -1) {
+              url = js.substring(js.indexOf("/etklink") + 1, js.indexOf(";") - 1);
+              resultObj.isEtkLink = true;
+              break;
             }
           }
         /* falls through */
@@ -1092,6 +1096,11 @@ class Catalog {
 
     if (isString(url)) {
       url = tryConvertUrlEncoding(url);
+      if (resultObj.isEtkLink) {
+        // ETKLink Reference needs to be directed to ETKLink rest api.
+        // Otherwise assume a "file reference" link, request file from prior guiviewer component
+        docBaseUrl += "../";
+      }
       const absoluteUrl = createValidAbsoluteUrl(url, docBaseUrl);
       if (absoluteUrl) {
         resultObj.url = absoluteUrl.href;
@@ -1527,11 +1536,11 @@ var XRef = (function XRefClosure() {
           // we won't skip over a new 'obj' operator in corrupt files where
           // 'endobj' operators are missing (fixes issue9105_reduced.pdf).
           while (startPos < buffer.length) {
-            const endPos = startPos + skipUntil(buffer, startPos, objBytes) + 4;
+            let endPos = startPos + skipUntil(buffer, startPos, objBytes) + 4;
             contentLength = endPos - position;
 
-            const checkPos = Math.max(endPos - CHECK_CONTENT_LENGTH, startPos);
-            const tokenStr = bytesToString(buffer.subarray(checkPos, endPos));
+            let checkPos = Math.max(endPos - CHECK_CONTENT_LENGTH, startPos);
+            let tokenStr = bytesToString(buffer.subarray(checkPos, endPos));
 
             // Check if the current object ends with an 'endobj' operator.
             if (endobjRegExp.test(tokenStr)) {
@@ -1539,7 +1548,7 @@ var XRef = (function XRefClosure() {
             } else {
               // Check if an "obj" occurrence is actually a new object,
               // i.e. the current object is missing the 'endobj' operator.
-              const objToken = nestedObjRegExp.exec(tokenStr);
+              let objToken = nestedObjRegExp.exec(tokenStr);
 
               if (objToken && objToken[1]) {
                 warn(
@@ -1552,7 +1561,7 @@ var XRef = (function XRefClosure() {
             }
             startPos = endPos;
           }
-          const content = buffer.subarray(position, position + contentLength);
+          let content = buffer.subarray(position, position + contentLength);
 
           // checking XRef stream suspect
           // (it shall have '/XRef' and next char is not a letter)
@@ -1597,7 +1606,7 @@ var XRef = (function XRefClosure() {
           continue;
         }
         // read the trailer dictionary
-        const dict = parser.getObj();
+        let dict = parser.getObj();
         if (!isDict(dict)) {
           continue;
         }
@@ -1634,7 +1643,7 @@ var XRef = (function XRefClosure() {
       // Keep track of already parsed XRef tables, to prevent an infinite loop
       // when parsing corrupt PDF files where e.g. the /Prev entries create a
       // circular dependency between tables (fixes bug1393476.pdf).
-      const startXRefParsedCache = Object.create(null);
+      let startXRefParsedCache = Object.create(null);
 
       try {
         while (this.startXRefQueue.length) {
@@ -2178,7 +2187,7 @@ var FileSpec = (function FileSpecClosure() {
  * that have references to the catalog or other pages since that will cause the
  * entire PDF document object graph to be traversed.
  */
-const ObjectLoader = (function() {
+let ObjectLoader = (function() {
   function mayHaveChildren(value) {
     return (
       value instanceof Ref ||
@@ -2190,17 +2199,17 @@ const ObjectLoader = (function() {
 
   function addChildren(node, nodesToVisit) {
     if (node instanceof Dict || isStream(node)) {
-      const dict = node instanceof Dict ? node : node.dict;
-      const dictKeys = dict.getKeys();
+      let dict = node instanceof Dict ? node : node.dict;
+      let dictKeys = dict.getKeys();
       for (let i = 0, ii = dictKeys.length; i < ii; i++) {
-        const rawValue = dict.getRaw(dictKeys[i]);
+        let rawValue = dict.getRaw(dictKeys[i]);
         if (mayHaveChildren(rawValue)) {
           nodesToVisit.push(rawValue);
         }
       }
     } else if (Array.isArray(node)) {
       for (let i = 0, ii = node.length; i < ii; i++) {
-        const value = node[i];
+        let value = node[i];
         if (mayHaveChildren(value)) {
           nodesToVisit.push(value);
         }
@@ -2226,12 +2235,12 @@ const ObjectLoader = (function() {
         return undefined;
       }
 
-      const { keys, dict } = this;
+      let { keys, dict } = this;
       this.refSet = new RefSet();
       // Setup the initial nodes to visit.
-      const nodesToVisit = [];
+      let nodesToVisit = [];
       for (let i = 0, ii = keys.length; i < ii; i++) {
-        const rawValue = dict.getRaw(keys[i]);
+        let rawValue = dict.getRaw(keys[i]);
         // Skip nodes that are guaranteed to be empty.
         if (rawValue !== undefined) {
           nodesToVisit.push(rawValue);
@@ -2241,8 +2250,8 @@ const ObjectLoader = (function() {
     },
 
     async _walk(nodesToVisit) {
-      const nodesToRevisit = [];
-      const pendingRequests = [];
+      let nodesToRevisit = [];
+      let pendingRequests = [];
       // DFS walk of the object graph.
       while (nodesToVisit.length) {
         let currentNode = nodesToVisit.pop();
@@ -2265,10 +2274,10 @@ const ObjectLoader = (function() {
           }
         }
         if (currentNode && currentNode.getBaseStreams) {
-          const baseStreams = currentNode.getBaseStreams();
+          let baseStreams = currentNode.getBaseStreams();
           let foundMissingData = false;
           for (let i = 0, ii = baseStreams.length; i < ii; i++) {
-            const stream = baseStreams[i];
+            let stream = baseStreams[i];
             if (stream.allChunksLoaded && !stream.allChunksLoaded()) {
               foundMissingData = true;
               pendingRequests.push({ begin: stream.start, end: stream.end });
@@ -2286,7 +2295,7 @@ const ObjectLoader = (function() {
         await this.xref.stream.manager.requestRanges(pendingRequests);
 
         for (let i = 0, ii = nodesToRevisit.length; i < ii; i++) {
-          const node = nodesToRevisit[i];
+          let node = nodesToRevisit[i];
           // Remove any reference nodes from the current `RefSet` so they
           // aren't skipped when we revist them.
           if (node instanceof Ref) {
